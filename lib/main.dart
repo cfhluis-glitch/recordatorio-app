@@ -1,50 +1,96 @@
-name: Build Flutter APK
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tzdata;
 
-on:
-  push:
-    branches: [ main ]
+void main() {
+  tzdata.initializeTimeZones();
+  runApp(const MyApp());
+}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-      - name: Set up Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      home: RecordatorioScreen(),
+    );
+  }
+}
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.x'
-          channel: 'stable'
-          cache: true
+class RecordatorioScreen extends StatefulWidget {
+  const RecordatorioScreen({super.key});
 
-      - name: Crear estructura Android
-        run: |
-          # Respaldamos tu código
-          mv lib/main.dart ./main_respaldo.dart
-          
-          # Generamos las carpetas de Android necesarias
-          flutter create . --platforms android
-          
-          # Restauramos tu código
-          mv ./main_respaldo.dart lib/main.dart
-          
-          # Inyectamos los permisos de alarma y notificaciones en Android
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
+  @override
+  State<RecordatorioScreen> createState() => _RecordatorioScreenState();
+}
 
-      - name: Install dependencies
-        run: flutter pub get
+class _RecordatorioScreenState extends State<RecordatorioScreen> {
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
 
-      - name: Build APK
-        run: flutter build apk --release
+  @override
+  void initState() {
+    super.initState();
+    _initNotifications();
+  }
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+  Future<void> _initNotifications() async {
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings =
+        InitializationSettings(android: initializationSettingsAndroid);
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  }
+
+  Future<void> _programarNotificacion(DateTime fechaInicio) async {
+    final DateTime proximaFecha = fechaInicio.add(const Duration(days: 30));
+
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+      0,
+      'Recordatorio de Inyección',
+      'Hoy corresponde aplicar la inyección.',
+      tz.TZDateTime.from(proximaFecha, tz.local),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'canal_recordatorio',
+          'Recordatorio Inyección',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Recordatorio programado para: $proximaFecha')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Recordatorio Inyección')),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: () async {
+            final DateTime? seleccion = await showDatePicker(
+              context: context,
+              initialDate: DateTime.now(),
+              firstDate: DateTime(2025),
+              lastDate: DateTime(2030),
+            );
+            if (seleccion != null) {
+              _programarNotificacion(seleccion);
+            }
+          },
+          child: const Text('Seleccionar Fecha de Última Inyección'),
+        ),
+      ),
+    );
+  }
+}
