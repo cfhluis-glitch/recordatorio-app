@@ -1,4 +1,4 @@
-name: recordatorio_app
+name: NaniApp
 description: "Una app para recordar inyecciones cada 30 dias."
 publish_to: 'none'
 version: 1.0.0+1

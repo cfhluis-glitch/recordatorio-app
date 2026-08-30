@@ -13,8 +13,18 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: RecordatorioScreen(),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Agenda Nani',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.pinkAccent,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+        fontFamily: 'Roboto',
+      ),
+      home: const RecordatorioScreen(),
     );
   }
 }
@@ -30,6 +40,9 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  DateTime? _fechaSeleccionada;
+  List<DateTime> _proximasFechas = [];
+
   @override
   void initState() {
     super.initState();
@@ -44,69 +57,254 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
     
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-    // Solicitar permiso de notificaciones en pantalla para Android 13+
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
   }
 
-  Future<void> _programarNotificacion(DateTime fechaInicio) async {
-    final DateTime proximaFecha = fechaInicio.add(const Duration(days: 30));
+  String _obtenerMes(int mes) {
+    const meses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    return meses[mes - 1];
+  }
 
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      0,
-      'Recordatorio de Inyección',
-      'Hoy corresponde aplicar la inyección.',
-      tz.TZDateTime.from(proximaFecha, tz.local),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'canal_recordatorio',
-          'Recordatorio Inyección',
-          importance: Importance.max,
-          priority: Priority.high,
+  Future<void> _programarNotificacion(DateTime fechaInicio) async {
+    // Cancelar cualquier alarma vieja para evitar duplicados
+    await flutterLocalNotificationsPlugin.cancelAll();
+
+    List<DateTime> nuevasFechas = [];
+
+    // Programar 3 meses hacia el futuro
+    for (int i = 0; i < 3; i++) {
+      // Ciclos de 30 días. (Día 29, 59 y 89 desde la última aplicación)
+      final int diasAAgregar = 29 + (i * 30);
+      final DateTime proxima = fechaInicio.add(Duration(days: diasAAgregar));
+      nuevasFechas.add(proxima);
+
+      final String titulo = '¡Hola Nani! 💖';
+      final String cuerpo = i == 2
+          ? 'Dosis #3: Aplica tu inyección y abre la app para programar tus próximos 3 meses.'
+          : 'Dosis #${i + 1}: Hoy corresponde aplicar tu inyección.';
+
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        i, // ID único por mes
+        titulo,
+        cuerpo,
+        tz.TZDateTime.from(proxima, tz.local),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'canal_recordatorio',
+            'Recordatorio Inyección',
+            importance: Importance.max,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            color: Colors.pinkAccent,
+          ),
         ),
-      ),
-      // Usamos inexactAllowWhileIdle para evitar bloqueos en Android 14
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
-    );
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.dayOfMonthAndTime,
+      );
+    }
+
+    setState(() {
+      _fechaSeleccionada = fechaInicio;
+      _proximasFechas = nuevasFechas;
+    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Recordatorio programado para: ${proximaFecha.day}/${proximaFecha.month}/${proximaFecha.year}'),
-          backgroundColor: Colors.green,
+          content: const Text(
+            '¡Listo! Se han programado tus próximos 3 meses 🌸',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.pinkAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
   }
 
+  Widget _construirTarjetaFecha(DateTime fecha, int indice) {
+    bool esUltima = indice == 2;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.pink.withOpacity(0.15),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          leading: CircleAvatar(
+            backgroundColor: esUltima ? Colors.orange.shade100 : Colors.pink.shade50,
+            radius: 28,
+            child: Icon(
+              esUltima ? Icons.notification_important_rounded : Icons.favorite_rounded,
+              color: esUltima ? Colors.orange : Colors.pinkAccent,
+              size: 30,
+            ),
+          ),
+          title: Text(
+            'Inyección #${indice + 1}',
+            style: TextStyle(
+              fontWeight: FontWeight.bold, 
+              fontSize: 16,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 5),
+              Text(
+                '${fecha.day} de ${_obtenerMes(fecha.month)}',
+                style: TextStyle(
+                  fontSize: 22,
+                  color: Colors.purple.shade700,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (esUltima)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '🔔 Reprogramar en la app este día',
+                      style: TextStyle(fontSize: 12, color: Colors.orange.shade900, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Recordatorio de Nani')),
-      body: Center(
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      body: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.pink.shade50, Colors.purple.shade50],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          onPressed: () async {
-            final DateTime? seleccion = await showDatePicker(
-              context: context,
-              initialDate: DateTime.now(),
-              firstDate: DateTime(2023),
-              lastDate: DateTime(2030),
-            );
-            if (seleccion != null) {
-              _programarNotificacion(seleccion);
-            }
-          },
-          child: const Text(
-            'Seleccionar Fecha de Última Inyección',
-            style: TextStyle(fontSize: 16),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 30),
+              const Icon(
+                Icons.favorite_rounded,
+                color: Colors.pinkAccent,
+                size: 60,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Agenda de Nani 💖',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.pinkAccent,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Si no hay fechas, mostrar mensaje de bienvenida. Si hay, mostrar la lista.
+              if (_proximasFechas.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(30),
+                      child: Text(
+                        'Aún no hay fechas programadas.\n¡Selecciona la fecha de tu última inyección para calcular tus próximos 3 meses!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 18, color: Colors.grey.shade600, height: 1.5),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _proximasFechas.length,
+                    itemBuilder: (context, index) {
+                      return _construirTarjetaFecha(_proximasFechas[index], index);
+                    },
+                  ),
+                ),
+                
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 30),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 60,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.pinkAccent,
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      shadowColor: Colors.pinkAccent.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                    onPressed: () async {
+                      final DateTime? seleccion = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2024),
+                        lastDate: DateTime(2030),
+                        helpText: 'SELECCIONA LA ÚLTIMA APLICACIÓN',
+                        builder: (context, child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.light(
+                                primary: Colors.pinkAccent,
+                                onPrimary: Colors.white,
+                                onSurface: Colors.black87,
+                              ),
+                            ),
+                            child: child!,
+                          );
+                        },
+                      );
+                      if (seleccion != null) {
+                        _programarNotificacion(seleccion);
+                      }
+                    },
+                    icon: const Icon(Icons.edit_calendar_rounded, size: 28),
+                    label: Text(
+                      _proximasFechas.isEmpty ? 'Comenzar a Programar' : 'Elegir Nueva Fecha',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
