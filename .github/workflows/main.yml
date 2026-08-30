@@ -26,7 +26,7 @@ jobs:
       - name: Crear estructura Android
         run: |
           mv lib/main.dart ./main_respaldo.dart
-          flutter create . --platforms android
+          flutter create --project-name recordatorio_app . --platforms android
           mv ./main_respaldo.dart lib/main.dart
           sed -i '/<application/i \    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' android/app/src/main/AndroidManifest.xml
 
