@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   tzdata.initializeTimeZones();
@@ -47,6 +48,28 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
   void initState() {
     super.initState();
     _initNotifications();
+    _cargarDatosGuardados();
+  }
+
+  // NUEVO: Cargar la fecha guardada en la memoria del teléfono al abrir la app
+  Future<void> _cargarDatosGuardados() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? fechaGuardada = prefs.getString('fecha_ultima_inyeccion');
+
+    if (fechaGuardada != null) {
+      final DateTime fecha = DateTime.parse(fechaGuardada);
+      List<DateTime> fechas = [];
+      
+      // Recalcular las 3 fechas para pintarlas en pantalla
+      for (int i = 0; i < 3; i++) {
+        fechas.add(fecha.add(Duration(days: 29 + (i * 30))));
+      }
+      
+      setState(() {
+        _fechaSeleccionada = fecha;
+        _proximasFechas = fechas;
+      });
+    }
   }
 
   Future<void> _initNotifications() async {
@@ -72,14 +95,11 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
   }
 
   Future<void> _programarNotificacion(DateTime fechaInicio) async {
-    // Cancelar cualquier alarma vieja para evitar duplicados
     await flutterLocalNotificationsPlugin.cancelAll();
 
     List<DateTime> nuevasFechas = [];
 
-    // Programar 3 meses hacia el futuro
     for (int i = 0; i < 3; i++) {
-      // Ciclos de 30 días. (Día 29, 59 y 89 desde la última aplicación)
       final int diasAAgregar = 29 + (i * 30);
       final DateTime proxima = fechaInicio.add(Duration(days: diasAAgregar));
       nuevasFechas.add(proxima);
@@ -90,7 +110,7 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
           : 'Dosis #${i + 1}: Hoy corresponde aplicar tu inyección.';
 
       await flutterLocalNotificationsPlugin.zonedSchedule(
-        i, // ID único por mes
+        i, 
         titulo,
         cuerpo,
         tz.TZDateTime.from(proxima, tz.local),
@@ -111,6 +131,10 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
       );
     }
 
+    // NUEVO: Guardar la fecha en la memoria permanente del teléfono
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('fecha_ultima_inyeccion', fechaInicio.toIso8601String());
+
     setState(() {
       _fechaSeleccionada = fechaInicio;
       _proximasFechas = nuevasFechas;
@@ -120,7 +144,7 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
-            '¡Listo! Se han programado tus próximos 3 meses 🌸',
+            '¡Listo! Se han guardado y programado tus próximos 3 meses 🌸',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           backgroundColor: Colors.pinkAccent,
@@ -232,7 +256,6 @@ class _RecordatorioScreenState extends State<RecordatorioScreen> {
               ),
               const SizedBox(height: 20),
               
-              // Si no hay fechas, mostrar mensaje de bienvenida. Si hay, mostrar la lista.
               if (_proximasFechas.isEmpty)
                 Expanded(
                   child: Center(
